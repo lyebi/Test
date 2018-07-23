@@ -470,6 +470,10 @@ should be computed.
             self.last_conv_feature = conv_feature
 
             intrinsic_reward = 0.05 * sel
+
+            print('intrinstic reward:', intrinsic_reward)
+            print('intrinstic reward2:', intrinsic_reward2)
+
             intrinsic_rewards1+=[intrinsic_reward]
             intrinsic_rewards2+=[intrinsic_reward2]
 
