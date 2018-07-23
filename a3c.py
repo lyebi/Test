@@ -449,7 +449,11 @@ should be computed.
             state, reward, terminal, info = env.step(action.argmax())
 
             # clip reward
-            reward = min(1, max(-1, reward))
+            # reward = min(1, max(-1, reward))
+            if reward>0:
+                reward/=100.0
+            else:
+                reward = min(1, max(-1, reward))
 
             # Intrinsic reward
             # Pixel control
@@ -490,7 +494,7 @@ should be computed.
 
             if self.visualise:
                 vis = state - 0.5 * state * goal_patch + 0.5 * goal_patch
-                vis = cv2.resize(vis, (500,500))
+                vis = cv2.resize(vis, (400,400))
                 cv2.imshow('img', vis)
                 cv2.waitKey(10)
 
