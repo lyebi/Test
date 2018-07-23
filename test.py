@@ -7,3 +7,4 @@ print(3232)
 import tensorflow as tf
 
 
+tf.Variable(6,name='asd')

@@ -43,6 +43,8 @@ def linear(x, size, name, initializer=None, bias_init=0):
     b = tf.get_variable(name + "/b", [size], initializer=tf.constant_initializer(bias_init))
     return tf.matmul(x, w) + b
 
+
+
 def categorical_sample(logits, d):
     value = tf.squeeze(tf.multinomial(logits - tf.reduce_max(logits, [1], keep_dims=True), 1), [1])
     return tf.one_hot(value, d)
@@ -50,6 +52,7 @@ def categorical_sample(logits, d):
 
 class LSTMPolicy(object):
     def __init__(self, ob_space, ac_space, meta_ac_space):
+
 
         with tf.variable_scope('conv'):
             self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
