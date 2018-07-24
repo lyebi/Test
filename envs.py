@@ -70,14 +70,6 @@ def create_vncatari_env(env_id, client_id, remotes, **_):
     env.configure(remotes=remotes, start_timeout=15 * 60, fps=fps, client_id=client_id)
     return env
 
-def create_atari_env(env_id):
-    env = gym.make(env_id)
-    env = Vectorize(env)
-    env = AtariRescale42x42(env)
-    env = DiagnosticsInfo(env)
-    env = Unvectorize(env)
-    return env
-
 def DiagnosticsInfo(env, *args, **kwargs):
     return vectorized.VectorizeFilter(env, DiagnosticsInfoI, *args, **kwargs)
 
@@ -286,3 +278,23 @@ class FlashRescale(vectorized.ObservationWrapper):
 
     def _observation(self, observation_n):
         return [_process_frame_flash(observation) for observation in observation_n]
+
+def create_atari_env(env_id):
+    env = gym.make(env_id)
+    env = Vectorize(env)
+    env = AtariRescale42x42(env)
+    env = DiagnosticsInfo(env)
+    env = Unvectorize(env)
+    return env
+
+#
+
+# env=create_atari_env('Alien-v0')
+# state=env.reset()
+# state=cv2.resize(state,(500,500))
+# cv2.imshow('img1',state)
+# cv2.imshow('img2',state[:,:,0])
+# cv2.imshow('img3',state[:,:,1])
+# cv2.imshow('img4',state[:,:,2])
+# cv2.waitKey()
+# print(np.shape(state))

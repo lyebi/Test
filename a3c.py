@@ -452,7 +452,7 @@ should be computed.
             # reward = min(1, max(-1, reward))
             if reward>0:
                 reward/=100.0
-                self.beta1=self.beta1+(1-self.beta1)*0.05
+                # self.beta1=self.beta1+(1-self.beta1)*0.05
             else:
                 reward = min(1, max(-1, reward))
 
