@@ -452,7 +452,7 @@ should be computed.
             # reward = min(1, max(-1, reward))
             if reward>0:
                 reward/=100.0
-                self.beta=self.beta+(1-self.beta)*0.0001
+                self.beta1=self.beta1+(1-self.beta1)*0.05
             else:
                 reward = min(1, max(-1, reward))
 
@@ -476,8 +476,8 @@ should be computed.
 
             intrinsic_reward = 0.05 * sel
 
-            print('intrinstic reward:', intrinsic_reward)
-            print('intrinstic reward2:', intrinsic_reward2)
+            # print('intrinstic reward:', intrinsic_reward)
+            # print('intrinstic reward2:', intrinsic_reward2)
 
             intrinsic_rewards1+=[intrinsic_reward]
             intrinsic_rewards2+=[intrinsic_reward2]
@@ -572,7 +572,10 @@ should be computed.
         batch_adv = discount(delta_t, gamma * lambda_)
         batch_prev_a = np.asarray(prev_actions)
         batch_prev_r = np.asarray(prev_rewards)
+        # print('shape features:',np.shape(features))
+
         features = features[0] # only use first feature into dynamic rnn
+        # print('shape features[0]',np.shape(features))
 
 
         # Batch meta action
