@@ -1,13 +1,20 @@
 import numpy as np
 import gym
 # import universe
-env=gym.make('Alien-v0')
+env=gym.make('MontezumaRevenge-v0')
 state=env.reset()
 
 import cv2
 
 
-state=cv2.resize(state,(84,84))
-print(np.shape(state))
-cv2.imshow('img',state)
-cv2.waitKey()
+
+
+
+for i in range(10000):
+    for a in range(18):
+        for b in range(10):
+            state,reward,_,_=env.step(a)
+            print('reward:',reward)
+            state = cv2.resize(state, (800, 800))
+            cv2.imshow('img',np.uint8(state))
+            cv2.waitKey()

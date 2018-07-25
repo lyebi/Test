@@ -311,7 +311,7 @@ should be computed.
             self.last_meta_action2 = action2
 
             self.last_meta_reward1 = [reward1]
-            self.last_meta_reward2 = [reward1]
+            self.last_meta_reward2 = [reward2]
 
             if terminal1:
                 self.last_meta_features1= policy1.get_initial_features()
@@ -497,7 +497,7 @@ should be computed.
                 vis = state - 0.5 * state * goal_patch + 0.5 * goal_patch
                 vis = cv2.resize(vis, (400,400))
                 cv2.imshow('img', vis)
-                cv2.waitKey(10)
+                cv2.waitKey(20)
 
             # collect the experience
             states += [self.last_state]
