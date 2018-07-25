@@ -8,7 +8,7 @@ import sys, signal
 import time
 import os
 from a3c import A3C
-from envs import create_env
+from envs import create_env,create_atari_env
 import distutils.version
 use_tf12_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('0.12.0')
 from time import sleep
@@ -23,7 +23,8 @@ class FastSaver(tf.train.Saver):
                                     meta_graph_suffix, False)
 
 def run(args, server):
-    env = create_env(args.env_id, client_id=str(args.task), remotes=args.remotes)
+    # env = create_env(args.env_id, client_id=str(args.task), remotes=args.remotes)
+    env = create_atari_env(args.env_id)
     trainer = A3C(env, args.task, args.visualise)
     # trainer = A3C(env, args.task, True)
 
