@@ -1,13 +1,13 @@
 import numpy as np
 import gym
-# import universe
+import universe
 env=gym.make('MontezumaRevenge-v0')
 state=env.reset()
 
 import cv2
-
-
-
+cv2.imshow('img',state)
+cv2.waitKey()
+cv2.waitKey()
 
 
 for i in range(10000):

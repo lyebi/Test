@@ -615,7 +615,7 @@ should be computed.
         discount_filter = np.array([gamma**i for i in range(len(extrinsic_rewards))])
         extrinsic_rewards= np.sum(discount_filter * extrinsic_rewards)
 
-        return self.last_state, np.sum(extrinsic_rewards)+np.sum(intrinsic_rewards1), np.sum(extrinsic_rewards)+np.sum(intrinsic_rewards2),terminal_end, None
+        return self.last_state, np.sum(extrinsic_rewards), np.sum(extrinsic_rewards),terminal_end, None
 
     def evaluate(self,sess):
 

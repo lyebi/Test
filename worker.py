@@ -25,6 +25,8 @@ class FastSaver(tf.train.Saver):
 def run(args, server):
     # env = create_env(args.env_id, client_id=str(args.task), remotes=args.remotes)
     env = create_atari_env(args.env_id)
+    if args.task==0:
+        args.visualise=True
     trainer = A3C(env, args.task, args.visualise)
     # trainer = A3C(env, args.task, True)
 
