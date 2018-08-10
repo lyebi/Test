@@ -197,6 +197,7 @@ should be computed.
         # Initialise Actor
         # Initialise last_state and last_features
         self.last_state = self.env.reset()
+        self.last_result=self.env.reset()[6:10,20:60]
         self.last_features = self.local_network.get_initial_features()
         self.last_action = np.zeros(self.env.action_space.n)
         self.last_reward = [0]
@@ -398,7 +399,7 @@ should be computed.
 
     def actor_process(self, sess, meta_action):
         """
-        Every time actor_process is called.
+        Every time actor_process is called.e
         The network get sync.
         The environment is run for 20 steps or until termination.
         The worker calculates gradients and then one update to the shared weight is made.
@@ -447,6 +448,16 @@ should be computed.
             action, value_, features_ = fetched[0], fetched[1], fetched[2:]
             # argmax to convert from one-hot
             state, reward, terminal, info = env.step(action.argmax())
+
+            #
+            # result=state[6:10,20:60]
+            # if np.sum(result)!=np.sum(self.last_result):
+            #     reward=-1
+            #     print('------------1')
+
+
+
+
 
             # clip reward
             # reward = min(1, max(-1, reward))
@@ -497,7 +508,7 @@ should be computed.
                 vis = state - 0.5 * state * goal_patch + 0.5 * goal_patch
                 vis = cv2.resize(vis, (400,400))
                 cv2.imshow('img', vis)
-                cv2.waitKey(20)
+                cv2.waitKey(5)
 
             # collect the experience
             states += [self.last_state]
@@ -513,6 +524,7 @@ should be computed.
             self.rewards += reward
 
             self.last_state = state
+            # self.last_result= result
             self.last_features = features_
             self.last_action = action
             self.last_reward = [reward]
@@ -587,8 +599,6 @@ should be computed.
             fetches = [self.summary_op, self.train_op, self.global_step]
         else:
             fetches = [self.train_op, self.global_step]
-
-
 
         feed_dict = {
             self.local_network.x: batch_si,

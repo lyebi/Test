@@ -86,6 +86,7 @@ class LSTMPolicy(object):
             self.state_size = lstm.state_size
             step_size = tf.shape(self.x)[:1]
 
+
             c_init = np.zeros((1, lstm.state_size.c), np.float32)
             h_init = np.zeros((1, lstm.state_size.h), np.float32)
             self.state_init = [c_init, h_init]
