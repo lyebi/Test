@@ -95,19 +95,33 @@
 #
 #
 #
-import gym
-import cv2
+# import gym
+# import cv2
 import numpy as np
 # from pygame.locals import *
 # import pygame,sys
 
 # from pynput.mouse import Button,Controller
-from envs import *
+# from envs import *
+#
+# env = create_atari_env('MontezumaRevenge-v0')
+# state=env.reset()[6:10,20:60]
+# cv2.imshow('img',state)
+# cv2.waitKey()
+#
+#
+# print(np.shape(state))
+import os
+import tensorflow as tf
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+with tf.device('/gpu:0'):
+    a = tf.constant([1.0,2.0,3.0],shape=[3],name = 'a')
+    b = tf.constant([1.0,3.0,2.0],shape = [3],name ='b')
+with tf.device('/gpu:1'):
+    c = a+b
 
-env = create_atari_env('MontezumaRevenge-v0')
-state=env.reset()[6:10,20:60]
-cv2.imshow('img',state)
-cv2.waitKey()
+sess = tf.Session(config = tf.ConfigProto(allow_soft_placement=True,log_device_placement = True))
 
-
-print(np.shape(state))
+sess.run(tf.global_variables_initializer())
+while(1):
+    print(sess.run(c+a))

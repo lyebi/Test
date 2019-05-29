@@ -15,6 +15,9 @@ from time import sleep
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+tf.device('/gpu:2')
+
 # Disables write_meta_graph argument, which freezes entire process and is mostly useless.
 class FastSaver(tf.train.Saver):
     def save(self, sess, save_path, global_step=None, latest_filename=None,
@@ -26,7 +29,7 @@ def run(args, server):
     # env = create_env(args.env_id, client_id=str(args.task), remotes=args.remotes)
     env = create_atari_env(args.env_id)
     if args.task==0:
-        args.visualise=True
+        args.visualise=False
     trainer = A3C(env, args.task, args.visualise)
     # trainer = A3C(env, args.task, True)
 
@@ -51,7 +54,7 @@ def run(args, server):
         logger.info("Initializing all parameters.")
         ses.run(init_all_op)
 
-    config = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/cpu:0".format(args.task)])
+    config = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/gpu:1".format(args.task)])
     logdir = os.path.join(args.log_dir, 'train')
 
     if use_tf12_api:
