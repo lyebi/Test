@@ -4,14 +4,14 @@ import sys
 from six.moves import shlex_quote
 
 parser = argparse.ArgumentParser(description="Run commands")
-parser.add_argument('-w', '--num-workers', default=1, type=int,
+parser.add_argument('-w', '--num-workers', default=32, type=int,
                     help="Number of workers")
 parser.add_argument('-r', '--remotes', default=None,
                     help='The address of pre-existing VNC servers and '
                          'rewarders to use (e.g. -r vnc://localhost:5900+15900,vnc://localhost:5901+15901).')
 parser.add_argument('-e', '--env-id', type=str, default="MontezumaRevenge-v0",
                     help="Environment id")
-parser.add_argument('-l', '--log-dir', type=str, default="/home/liboxing/tmp2/amulti_goal_maliao_four_goal22",
+parser.add_argument('-l', '--log-dir', type=str, default="/home/liboxing/tmp3/amulti_goal_maliao_four_goal7_full_length_2",
                     help="Log directory path")
 parser.add_argument('-n', '--dry-run', action='store_true',
                     help="Print out commands rather than executing them")
@@ -21,7 +21,6 @@ parser.add_argument('-m', '--mode', type=str, default='tmux',
 # Add visualise tag
 parser.add_argument('--visualise', action='store_true',
                     help="Visualise the gym environment by running env.render() between each timestep")
-
 
 def new_cmd(session, name, cmd, mode, logdir, shell):
     if isinstance(cmd, (list, tuple)):

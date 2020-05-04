@@ -111,17 +111,9 @@ import numpy as np
 #
 #
 # print(np.shape(state))
-import os
-import tensorflow as tf
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-with tf.device('/gpu:0'):
-    a = tf.constant([1.0,2.0,3.0],shape=[3],name = 'a')
-    b = tf.constant([1.0,3.0,2.0],shape = [3],name ='b')
-with tf.device('/gpu:1'):
-    c = a+b
+import gym
 
-sess = tf.Session(config = tf.ConfigProto(allow_soft_placement=True,log_device_placement = True))
+env = gym.make("MontezumaRevenge-v0")
+env.reset()
+print(env.action_space.n)
 
-sess.run(tf.global_variables_initializer())
-while(1):
-    print(sess.run(c+a))

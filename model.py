@@ -6,7 +6,7 @@ from attention import attention
 use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
 
 def normalized_columns_initializer(std=1.0):
-    def _initializer(shape, dtype=None, partition_info=None):
+    def _initializer(shape, dtype = None, partition_info = None):
         out = np.random.randn(*shape).astype(np.float32)
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
         return tf.constant(out)
@@ -24,7 +24,7 @@ def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", 
         # inputs to each hidden unit
         fan_in = np.prod(filter_shape[:3])
         # each unit in the lower layer receives a gradient from:
-        # "num output feature maps * filter height * filter width" /
+        # "num output feature maps * filter height * filter width"
         #   pooling size
         fan_out = np.prod(filter_shape[:2]) * num_filters
         # initialize weights with random weights
@@ -42,6 +42,11 @@ def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", 
 def linear(x, size, name, initializer=None, bias_init=0):
     w = tf.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
     b = tf.get_variable(name + "/b", [size], initializer=tf.constant_initializer(bias_init))
+    return tf.matmul(x, w) + b
+
+def linear2(x, size, name, initializer=None, bias_init=0):
+    w = tf.get_variable(name + "/w22", [x.get_shape()[1], size], initializer=initializer)
+    b = tf.get_variable(name + "/b22", [size], initializer=tf.constant_initializer(bias_init))
     return tf.matmul(x, w) + b
 
 
@@ -68,19 +73,27 @@ class LSTMPolicy(object):
             self.conv_feature = tf.reduce_mean(x, axis=[1,2])
             self.conv_feature2=x  #None ,11,11,32
 
-            x = tf.nn.relu(linear(flatten(x), 256, "hidden",  normalized_columns_initializer(1.0)))
+            # weights = self._intialize_weights()
+            # x = tf.nn.relu(tf.matmul(flatten(x),weights['f1_w'])+weights['f1_b'])
+            # self.encoding = tf.matmul(x,weights['f2_w']) + weights['f2_b']
+
+            self.feature = x = tf.nn.relu(linear(flatten(x), 256, "hidden",  normalized_columns_initializer(1.0)))
+            self.encoding = linear2(self.feature, 30 , "encoding", normalized_columns_initializer(0.01))
 
             self.prev_action = prev_action = tf.placeholder(tf.float32, [None, ac_space], "prev_a")
             self.prev_reward = prev_reward = tf.placeholder(tf.float32, [None, 1], "prev_r")
 
-            # concat previous action and reward
-            x = tf.concat([x, prev_action], axis=1)
-            x = tf.concat([x, prev_reward], axis=1)
-
             self.meta_action = meta_action = tf.placeholder(tf.float32, [None, meta_ac_space], "meta_action")
+
 
             # concat
             x = tf.concat([x, meta_action], axis=1)
+            self.weights = tf.nn.relu(linear(flatten(x), 4, "hidden2", normalized_columns_initializer(0.1)))
+            # concat previous action and reward
+            # x = tf.concat([x,self.encoding],axis=1)
+            x = tf.concat([x, prev_action], axis=1)
+            x = tf.concat([x, prev_reward], axis=1)
+
             # attention_mask = attention(x, 332)
             # print(attention_mask.get_shape())
             # x = tf.multiply(x, attention_mask) + x
@@ -115,14 +128,10 @@ class LSTMPolicy(object):
                 lstm, x, initial_state=state_in, sequence_length=step_size,
                 time_major=False)
             print('lstm_state:', lstm_outputs.get_shape())
-
-
             lstm_c, lstm_h = lstm_state
-
-
-
-
             x = tf.reshape(lstm_outputs, [-1, size])
+
+
             self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
             self.vf = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
             self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
@@ -130,6 +139,29 @@ class LSTMPolicy(object):
 
         # Note: need to be on scope of the class
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+    def _intialize_weights(self):
+        weights = dict()
+
+        inputs_size1 = 11*11*32
+        output_size1 = 256
+        glorot = np.sqrt(2.0/(inputs_size1+output_size1))
+        weights['f1_w'] = tf.Variable(np.random.normal(loc=0,scale=glorot,size = (inputs_size1,output_size1)),
+                                      dtype = np.float32)
+        weights['f1_b'] = tf.Variable(np.random.normal(loc=0,scale=glorot,size = (1,output_size1)),dtype = np.float32)
+
+        inputs_size2 = 256
+        output_size2 = 40
+        glorot = np.sqrt(2.0/inputs_size2+output_size2)
+
+        weights['f2_w'] = tf.Variable(np.random.normal(loc=0, scale=glorot, size=(inputs_size2, output_size2)),
+                                      dtype=np.float32)
+        weights['f2_b'] = tf.Variable(np.random.normal(loc=0, scale=glorot, size=(1, output_size2)), dtype=np.float32)
+
+        return weights
+
+
+
 
     def get_initial_features(self):
         return self.state_init
@@ -147,6 +179,12 @@ class LSTMPolicy(object):
                         self.state_in[1]: h, self.prev_action: [prev_a],
                         self.prev_reward: [prev_r], self.meta_action: [meta_a]})[0]
 
+    def get_weights(self,ob,meta_a):
+        sess = tf.get_default_session()
+        return sess.run([self.weights],
+                        {self.x: [ob], self.meta_action: [meta_a]})
+
+
     def get_conv_feature(self, ob):
         sess = tf.get_default_session()
         return sess.run([self.conv_feature], {self.x: [ob]})
@@ -156,6 +194,14 @@ class LSTMPolicy(object):
     def get_conv_feature2(self, ob):
         sess = tf.get_default_session()
         return sess.run([self.conv_feature2], {self.x: [ob]})
+    def get_encoding(self,ob):
+        sess = tf.get_default_session()
+        return sess.run([self.encoding],{self.x:[ob]})
+
+    def get_feature(self,ob):
+        sess = tf.get_default_session()
+        return sess.run([self.feature],{self.x : [ob]})
+
 
 
 class MetaPolicy(object):
@@ -345,6 +391,7 @@ class MetaPolicy3(object):
             # try logits with 36 actions + 1 no patch action
             self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
             self.sample = categorical_sample(self.logits, ac_space)[0, :]
+            print("sample",self.sample.get_shape())
 
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -411,6 +458,7 @@ class MetaPolicy4(object):
 
             # try logits with 36 actions + 1 no patch action
             self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
+            self.sample = categorical_sample(self.logits, ac_space)[0, :]
             # self.sample = categorical_sample(self.logits, ac_space)[0, :]
 
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -420,9 +468,31 @@ class MetaPolicy4(object):
 
     def act(self, ob, c, h, prev_a, prev_r):
         sess = tf.get_default_session()
-        return sess.run([self.logits, self.vf] + self.state_out,
+        return sess.run([self.sample, self.vf] + self.state_out,
                         {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h, self.prev_action: [prev_a], self.prev_reward: [prev_r] })
 
     def value(self, ob, c, h, prev_a, prev_r):
         sess = tf.get_default_session()
         return sess.run(self.vf, {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h, self.prev_action: [prev_a], self.prev_reward: [prev_r]})[0]
+
+
+class curiosity_network(object):
+    def __init__(self, ob_space, ac_space = 18):
+
+        with tf.variable_scope('curiosity'):
+            self.s = s = tf.placeholder(tf.float32,[None]+list(ob_space))
+            self.action = tf.placeholder(tf.float32,[None,ac_space],"a")
+
+            s = tf.nn.relu(conv2d(s,16,"l1",[8,8],[4,4]))
+            s = tf.nn.relu(conv2d(s,32,"l2",[4,4],[2,2]))
+            self.feature = s = tf.nn.relu(linear(flatten(s),256,"hidden",normalized_columns_initializer(1.0)))
+
+    def act(self, ob,a):
+        sess = tf.get_default_session()
+        return sess.run( self.feature,
+                        {self.s: [ob], self.action:[a] })
+
+
+
+
+

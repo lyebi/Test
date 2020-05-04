@@ -2,7 +2,7 @@ from __future__ import print_function
 from collections import namedtuple
 import numpy as np
 import tensorflow as tf
-from model import LSTMPolicy, MetaPolicy,MetaPolicy2,MetaPolicy3,MetaPolicy4
+from model import LSTMPolicy, MetaPolicy,MetaPolicy2,MetaPolicy3,MetaPolicy4,curiosity_network
 import six.moves.queue as queue
 import scipy.signal
 import threading
@@ -10,6 +10,12 @@ import distutils.version
 use_tf12_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('0.12.0')
 import cv2
 
+def cosine_similarity(u, v, eps=1e-8):
+    u_norm = tf.sqrt(tf.reduce_sum(tf.square(u),axis=1))
+    v_norm = tf.sqrt(tf.reduce_sum(tf.square(v),axis=1))
+    uv = tf.reduce_sum(tf.multiply(u,v),axis=1)
+    cosin = uv/(u_norm * v_norm)
+    return cosin
 
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
@@ -29,7 +35,7 @@ should be computed.
         self.meta_action_size1 = 32
         self.meta_action_size2=37
         self.meta_action_size3=5
-        self.meta_action_size4=16
+        self.meta_action_size4=30
         self.meta_action_size = self.meta_action_size1+self.meta_action_size2 + self.meta_action_size3+ self.meta_action_size4
 
         worker_device = "/job:worker/task:{}/cpu:0".format(task)
@@ -44,6 +50,8 @@ should be computed.
                 self.meta_network2=  MetaPolicy2(env.observation_space.shape, self.meta_action_size2)
                 self.meta_network3=  MetaPolicy3(env.observation_space.shape, self.meta_action_size3)
                 self.meta_network4=  MetaPolicy4(env.observation_space.shape, self.meta_action_size4)
+                self.meta_curiosity_network = curiosity_network(env.observation_space.shape,18)
+
 
         with tf.device(worker_device):
             with tf.variable_scope("local"):
@@ -52,6 +60,7 @@ should be computed.
                 self.local_meta_network2 = meta_pi2= MetaPolicy2(env.observation_space.shape, self.meta_action_size2)
                 self.local_meta_network3 = meta_pi3= MetaPolicy3(env.observation_space.shape, self.meta_action_size3)
                 self.local_meta_network4 = meta_pi4= MetaPolicy4(env.observation_space.shape, self.meta_action_size4)
+                self.local_curiosity_network = local_curiosity =  curiosity_network(env.observation_space.shape, 18)
 
                 pi.global_step = self.global_step
 
@@ -61,6 +70,7 @@ should be computed.
 
             log_prob_tf = tf.nn.log_softmax(pi.logits)
             prob_tf = tf.nn.softmax(pi.logits)
+
 
             # the "policy gradients" loss:  its derivative is precisely the policy gradient
             # notice that self.ac is a placeholder that is provided externally.
@@ -146,6 +156,7 @@ should be computed.
             # ]
             # self.meta_summary_op = tf.summary.merge(meta_summary1)
             self.beta1 = 0.75
+            # self.beta1 = 0.60
 
 
             ###################################
@@ -190,9 +201,7 @@ should be computed.
             ]
             self.meta_summary_op = tf.summary.merge(meta_summary2)
 
-
             self.beta2 = 0.75
-
 
             #########################################################################################################
             ########## META CONTROLLER1 : direction instruction
@@ -229,6 +238,7 @@ should be computed.
             ########## META CONTROLLER1 : offset goal
             #######################################################################################################
             self.meta_ac4 = tf.placeholder(tf.float32, [None, self.meta_action_size4], name="meta_ac4")
+            # self.meta4_diff = tf.placeholder(tf.float32,[None,self.meta_action_size4],name="meta_diff")
             self.meta_adv4 = tf.placeholder(tf.float32, [None], name="meta_adv4")
             self.meta_r4 = tf.placeholder(tf.float32, [None], name="meta_r4")
 
@@ -240,9 +250,9 @@ should be computed.
 
             # entropy
             meta_entropy4 = - tf.reduce_sum(meta_prob_tf4 * meta_log_prob_tf4)
-            meta_bs4 = tf.to_float(tf.shape(meta_pi4.x)[0])
+            # meta_bs4 = tf.to_float(tf.shape(meta_pi4.x)[0])
 
-            self.meta_loss4 = meta_pi_loss4 + 0.5 * meta_vf_loss4 - meta_entropy4 * 0.01
+            self.meta_loss4 = meta_pi_loss4 + 0.5 * meta_vf_loss4
             meta_grads4 = tf.gradients(self.meta_loss4, meta_pi4.var_list)
             meta_grads4, _ = tf.clip_by_global_norm(meta_grads4, 40.0)
 
@@ -255,6 +265,13 @@ should be computed.
             meta_opt4 = tf.train.AdamOptimizer(1e-4)
             self.meta_train_op4 = meta_opt4.apply_gradients(meta_grads_and_vars4)
             self.beta4 = 0.75
+
+            ##########################################################################################
+            ####################
+
+
+
+
 
     def start(self, sess, summary_writer):
         self.summary_writer = summary_writer
@@ -296,9 +313,7 @@ should be computed.
 
         #
         self.last_conv_feature = np.zeros(self.meta_action_size1)
-        self.last_new_conv_feature = np.zeros(self.meta_action_size4)
-        self.last_conv_feature2 = np.zeros((121,32))
-        # self.last_conv_feature2 = np.reshape(self.last_conv_feature2,(11,11,32))
+        self.last_conv_feature2 = np.zeros(self.meta_action_size4)
 
     def process(self, sess):
         """
@@ -355,6 +370,7 @@ should be computed.
         states4 = []
         actions4 = []
         rewards4 = []
+        diffs=[]
         values4 = []
         r4 = 0.0
         terminal4 = False
@@ -364,8 +380,9 @@ should be computed.
 
 
 
-
         for _local_step in range(num_local_steps):
+
+
             fetched1 = policy1.act(self.last_meta_state1, self.last_meta_features1[0],
                                  self.last_meta_features1[1], self.last_meta_action1,
                                  self.last_meta_reward1)
@@ -387,7 +404,7 @@ should be computed.
             action3, value3_, features3_ = fetched3[0], fetched3[1], fetched3[2:]
             action4, value4_, features4_ = fetched4[0], fetched4[1], fetched4[2:]
 
-            state1, reward1,reward2,reward3,reward4, terminal1, info1 = self.actor_process(sess, [action1,action2,action3,action4])
+            state1, reward1,reward2,reward3,reward4, terminal1, info1= self.actor_process(sess, [action1,action2,action3,action4])
             # collect experience
             states1 += [self.last_meta_state1]
             states2 += [self.last_meta_state2]
@@ -404,6 +421,7 @@ should be computed.
             rewards2 += [reward2]
             rewards3 += [reward3]
             rewards4 += [reward4]
+
 
             values1 += [value1_]
             values2 += [value2_]
@@ -561,15 +579,13 @@ should be computed.
             self.local_meta_network3.prev_reward: batch_prev_r3,
 
             self.local_meta_network4.x: batch_si,
-            self.meta_ac4: batch_a4,
+            self.meta_ac4:batch_a4,
             self.meta_adv4: batch_adv4,
             self.meta_r4: batch_r4,
             self.local_meta_network4.state_in[0]: features4[0],
             self.local_meta_network4.state_in[1]: features4[1],
             self.local_meta_network4.prev_action: batch_prev_a4,
             self.local_meta_network4.prev_reward: batch_prev_r4
-
-
         }
 
         fetched = sess.run(fetches, feed_dict=feed_dict)
@@ -594,6 +610,8 @@ should be computed.
         num_local_steps = 100
         env = self.env
         policy = self.local_network
+        curiosity_policy = self.local_curiosity_network
+
 
         states  = []
         actions = []
@@ -622,7 +640,12 @@ should be computed.
         idx2 = meta_action[1].argmax()
         idx3 = meta_action[2].argmax()
         idx4 = meta_action[3].argmax()
+
+        print(np.shape(meta_action[1]))
+        print(np.shape(meta_action[2]))
+        print(np.shape(meta_action[3]))
         meta_action_total=np.array(list(meta_action[0])+list(meta_action[1])+list(meta_action[2])+list(meta_action[3]))
+
 
         pos_x = idx2 // 6
         pos_y = idx2 - 6*pos_x
@@ -630,14 +653,23 @@ should be computed.
         if idx2 != 37:
            goal_patch[ 14 * pos_x: 14 * (pos_x + 1) + 1, 14*pos_y: 14*(pos_y+1) +1 ] = 1
 
+        weights = policy.get_weights(self.last_state,meta_action_total)[0][0]
+        weights = np.exp(weights)/sum(np.exp(weights))
+
+
+
         for _local_step in range(num_local_steps):
             # Take a step
             fetched = policy.act(self.last_state, self.last_features[0], self.last_features[1],
                                  self.last_action, self.last_reward, meta_action_total)
+
             action, value_, features_ = fetched[0], fetched[1], fetched[2:]
+
+            curiosity_features = curiosity_policy.act(self.last_state,self.last_action)
+
+
             # argmax to convert from one-hot
             state, reward, terminal, info = env.step(action.argmax())
-
 
             result=state[6:10,20:60]
             if np.sum(result)!=np.sum(self.last_result):
@@ -650,7 +682,7 @@ should be computed.
             # reward = min(1, max(-1, reward))
             if reward>0:
                 reward/=100.0
-                # self.beta1=self.beta1+(1-self.beta1)*0.05
+                # self.beta1=self.beta1+0.1/20000000
             else:
                 reward = min(1, max(-1, reward))
 
@@ -675,35 +707,38 @@ should be computed.
                 intrinsic_reward3=0
 
 
+
             # Feature control [selectivity (Bengio et al., 2017)]
             conv_feature = policy.get_conv_feature(state)[0][0]
             sel = np.abs(conv_feature[idx] - self.last_conv_feature[idx])
-            sel = sel / ( np.sum( np.abs(conv_feature - self.last_conv_feature) ) + 1e-5)
+            sel = sel / ( np.sum( np.abs(conv_feature - self.last_conv_feature)) + 1e-5)
             self.last_conv_feature = conv_feature
             intrinsic_reward = 0.05 * sel
 
-            new_conv_feature = policy.get_new_conv_feature(state)[0][0]
-            sel2 = np.abs(conv_feature[idx4] - self.last_conv_feature[idx4])
-            sel2 = sel2 / (np.sum(np.abs(new_conv_feature - self.last_new_conv_feature)) + 1e-5)
-            self.last_new_conv_feature = new_conv_feature
+
+            conv_feature2 = policy.get_encoding(state)[0][0]
+            sel2 = np.abs(conv_feature2[idx4] - self.last_conv_feature2[idx4])
+            sel2 = sel2 / (np.sum(np.abs(conv_feature2 - self.last_conv_feature2)) + 1e-5)
+            self.last_conv_feature2 = conv_feature2
             intrinsic_reward4 = 0.05 * sel2
 
 
+            real_next_features = policy.get_feature(state)[0][0]
+            curiosity_diff = np.sqrt(np.sum(np.square(real_next_features-curiosity_features)))
+            intrinsic_curiosity_reward = 0.05 * curiosity_diff
 
-            conv_feature2=policy.get_conv_feature2(state)[0][0]
-            conv_feature2=np.reshape(conv_feature2,(121,32))
 
-            conv_feature2[conv_feature2>0]=1
-            self.last_conv_feature2[self.last_conv_feature2>0]=1
-            relu_unit_change=np.sum(conv_feature2)-np.sum(self.last_conv_feature2)
 
-            aux_reward=relu_unit_change/3872
-            intrinsic_reward+=aux_reward
-            self.last_conv_feature2 = conv_feature2
+
+            # conv_feature2[conv_feature2>0]=1
+            # self.last_conv_feature2[self.last_conv_feature2>0]=1
+            # relu_unit_change=np.sum(conv_feature2)-np.sum(self.last_conv_feature2)
+            # aux_reward=relu_unit_change/3872
+            # intrinsic_reward+=aux_reward
+            # self.last_conv_feature2 = conv_feature2
 
 
             # print(intrinsic_reward2)
-
             # print('intrinstic reward:', intrinsic_reward)
             # print('intrinstic reward2:', intrinsic_reward2)
 
@@ -711,6 +746,7 @@ should be computed.
             intrinsic_rewards2+=[intrinsic_reward2]
             intrinsic_rewards3+=[intrinsic_reward3]
             intrinsic_rewards4+=[intrinsic_reward4]
+
 
             if intrinsic_reward>0:
                 reward1=reward
@@ -727,12 +763,17 @@ should be computed.
             else:
                 reward3=0
 
+            if intrinsic_reward4>0:
+                reward4=reward
+            else:
+                reward4=0
 
             # record extrinsic reward
             extrinsic_rewards += [reward]
             extrinsic_rewards1 += [reward1]
             extrinsic_rewards2 += [reward2]
             extrinsic_rewards3 += [reward3]
+            extrinsic_rewards4 += [reward4]
             self.ex_rewards += reward
             self.in_rewards += intrinsic_reward
             self.in_rewards2+=intrinsic_reward2
@@ -741,7 +782,9 @@ should be computed.
 
             # Apply intrinsic reward
             beta = self.beta1
-            reward = beta * reward + ((1.0 - beta)/2) *(intrinsic_reward+intrinsic_reward2+intrinsic_reward3+intrinsic_reward4)
+            reward = beta * reward + (1.0 - beta) *(intrinsic_reward*weights[0]+intrinsic_reward2*weights[1]+
+                                                    intrinsic_reward3*weights[2]+intrinsic_reward4*weights[3] +
+                                                    intrinsic_curiosity_reward)
 
             if self.visualise:
                 vis = state - 0.5 * state * goal_patch + 0.5 * goal_patch
@@ -778,6 +821,7 @@ should be computed.
                 self.summary_writer.flush()
 
             timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
+            # timestep_limit = 5000
             if terminal or self.length >= timestep_limit:
                 terminal_end = True
                 if self.length >= timestep_limit or not env.metadata.get('semantics.autoreset'):
@@ -792,6 +836,7 @@ should be computed.
                 summary.value.add(tag='global/episode_intrinsic_reward', simple_value=self.in_rewards)
                 summary.value.add(tag='global/episode_intrinsic_reward2', simple_value=self.in_rewards2)
                 summary.value.add(tag='global/episode_intrinsic_reward3', simple_value=self.in_rewards3)
+                summary.value.add(tag='global/episode_intrinsic_reward4', simple_value=self.in_rewards4)
 
                 self.summary_writer.add_summary(summary, policy.global_step.eval())
                 self.summary_writer.flush()
@@ -866,9 +911,6 @@ should be computed.
         # early rewards are better?
         discount_filter = np.array([gamma**i for i in range(len(extrinsic_rewards))])
         extrinsic_rewards= np.sum(discount_filter * extrinsic_rewards)
-        extrinsic_rewards1= np.sum(discount_filter * extrinsic_rewards1)
-        extrinsic_rewards2= np.sum(discount_filter * extrinsic_rewards2)
-        extrinsic_rewards3= np.sum(discount_filter * extrinsic_rewards3)
 
         return self.last_state, np.sum(extrinsic_rewards), np.sum(extrinsic_rewards),np.sum(extrinsic_rewards),np.sum(extrinsic_rewards),terminal_end, None
 
